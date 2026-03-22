@@ -136,7 +136,11 @@ celerybeat.pid
 
 # Environments
 .env
-.envrc
+**/.env*
+frontend/.env.local
+.env
+.env.local
+.env.*
 .venv
 env/
 venv/
@@ -205,3 +209,9 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+.claude/
+claude.md
+brainstorm.md
+project_spec.md
+project_scaffolding.md
