@@ -1,21 +1,28 @@
 "use client";
 
+import { useRef } from "react";
 import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
-import { Bold, Heading2, Heading3, Italic, List, ListOrdered } from "lucide-react";
+import Image from "@tiptap/extension-image";
+import { Bold, Heading2, Heading3, ImageIcon, Italic, List, ListOrdered } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { API_CONFIG } from "@/config/constants";
 
 interface RichTextEditorProps {
   onChange: (html: string) => void;
   disabled?: boolean;
+  token?: string | null;
 }
 
-export default function RichTextEditor({ onChange, disabled }: RichTextEditorProps) {
+export default function RichTextEditor({ onChange, disabled, token }: RichTextEditorProps) {
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   const editor = useEditor({
     extensions: [
       StarterKit.configure({
         heading: { levels: [2, 3] },
       }),
+      Image.configure({ inline: false }),
     ],
     editable: !disabled,
     onUpdate: ({ editor }) => {
@@ -28,6 +35,38 @@ export default function RichTextEditor({ onChange, disabled }: RichTextEditorPro
       },
     },
   });
+
+  const handleImageFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !editor) return;
+
+    e.target.value = "";
+
+    const formData = new FormData();
+    formData.append("file", file);
+
+    const headers: Record<string, string> = {};
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+
+    try {
+      const res = await fetch(`${API_CONFIG.baseUrl}/api/images/upload`, {
+        method: "POST",
+        headers,
+        body: formData,
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: "Upload failed" }));
+        throw new Error(err.detail ?? "Upload failed");
+      }
+
+      const { url } = await res.json();
+      editor.chain().focus().setImage({ src: url }).run();
+    } catch (err) {
+      const { toast } = await import("sonner");
+      toast.error(err instanceof Error ? err.message : "Image upload failed.");
+    }
+  };
 
   const ToolbarButton = ({
     onClick,
@@ -104,7 +143,24 @@ export default function RichTextEditor({ onChange, disabled }: RichTextEditorPro
         >
           <ListOrdered className="h-4 w-4" />
         </ToolbarButton>
+
+        {token && (
+          <>
+            <div className="w-px h-4 bg-border mx-0.5" />
+            <ToolbarButton onClick={() => fileInputRef.current?.click()}>
+              <ImageIcon className="h-4 w-4" />
+            </ToolbarButton>
+          </>
+        )}
       </div>
+
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/png,image/jpeg,image/gif,image/webp"
+        className="hidden"
+        onChange={handleImageFileChange}
+      />
 
       <EditorContent editor={editor} />
     </div>
