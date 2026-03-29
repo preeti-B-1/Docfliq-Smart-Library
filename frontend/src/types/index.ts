@@ -57,6 +57,7 @@ export interface Content {
   processing_status: ProcessingStatus;
   ai_summary: string | null;
   view_count: number;
+  is_bookmarked: boolean;
   tags: Tag[];
   created_at: string;
   updated_at: string;
@@ -155,4 +156,98 @@ export interface UploadResponse {
 export interface ContentStatusResponse {
   id: number;
   processing_status: ProcessingStatus;
+}
+
+export interface AIFallbackEvent {
+  content_id: number;
+  error_message: string | null;
+  duration_ms: number;
+  created_at: string;
+}
+
+export interface AIProviderStats {
+  total_calls: number;
+  claude_calls: number;
+  fallback_calls: number;
+  fallback_rate: number;
+  claude_success_rate: number;
+  gpt_success_rate: number;
+  recent_fallbacks: AIFallbackEvent[];
+  ask_ai_claude_failures: number;
+  ask_ai_gpt_fallbacks: number;
+  recent_ask_ai_fallbacks: AIFallbackEvent[];
+}
+
+export type AnalyticsDateRange = "7d" | "30d" | "all";
+
+export interface TopArticleView {
+  id: number;
+  title: string;
+  view_count: number;
+}
+
+export interface TagPopularity {
+  name: string;
+  article_count: number;
+}
+
+export interface SearchTermFrequency {
+  query: string;
+  count: number;
+}
+
+export interface ZeroResultSearch {
+  query: string;
+  count: number;
+}
+
+export interface WeeklyPublish {
+  week: string;
+  count: number;
+}
+
+export interface PublishingAnalytics {
+  weekly_publishes: WeeklyPublish[];
+}
+
+export interface DailySignup {
+  date: string;
+  count: number;
+}
+
+export interface ViewsAnalytics {
+  top_articles: TopArticleView[];
+}
+
+export interface TagsAnalytics {
+  specialties: TagPopularity[];
+}
+
+export interface SearchesAnalytics {
+  top_searches: SearchTermFrequency[];
+  zero_result_searches: ZeroResultSearch[];
+}
+
+export interface UsersAnalytics {
+  total_users: number;
+  total_articles: number;
+  total_views: number;
+  daily_signups: DailySignup[];
+}
+
+export interface BookmarkToggleResponse {
+  bookmarked: boolean;
+}
+
+export interface ReadingHistoryItem extends ContentListItem {
+  last_read_at: string;
+}
+
+export interface AskAIMessage {
+  role: "user" | "assistant";
+  content: string;
+}
+
+export interface AskAIResponse {
+  answer: string;
 }

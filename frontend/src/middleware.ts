@@ -1,7 +1,7 @@
 import { withAuth } from "next-auth/middleware";
 import { NextResponse } from "next/server";
 
-const ADMIN_ROUTES = ["/upload", "/drafts", "/tags", "/analytics"];
+const ADMIN_ROUTES = ["/upload", "/drafts", "/analytics"];
 
 export default withAuth(
   function middleware(req) {
@@ -32,7 +32,6 @@ export const config = {
     "/article/:path*",
     "/upload/:path*",
     "/drafts/:path*",
-    "/tags/:path*",
     "/analytics/:path*",
   ],
 };

@@ -1,15 +1,23 @@
 import { API_CONFIG } from "@/config/constants";
 import type {
+  AIProviderStats,
+  AnalyticsDateRange,
+  AskAIMessage,
   AuthResponse,
+  BookmarkToggleResponse,
   Content,
   ContentDraft,
   ContentFilters,
   ContentListItem,
   ContentUpdateRequest,
   PaginatedResponse,
-  Tag,
-  TagWithCount,
+  PublishingAnalytics,
+  ReadingHistoryItem,
+  SearchesAnalytics,
+  TagsAnalytics,
   UploadResponse,
+  UsersAnalytics,
+  ViewsAnalytics,
   ContentStatusResponse,
 } from "@/types";
 
@@ -137,32 +145,113 @@ class ApiClient {
     return this.request<ContentStatusResponse>(`/api/content/${id}/status`);
   }
 
-  // ─── Tags ──────────────────────────────────────────────────────────────────
-
-  async getTags(): Promise<TagWithCount[]> {
-    return this.request<TagWithCount[]>("/api/tags");
+  async getRelatedContent(id: number): Promise<ContentListItem[]> {
+    return this.request<ContentListItem[]>(`/api/content/${id}/related`);
   }
 
-  async getSpecialties(): Promise<Tag[]> {
-    return this.request<Tag[]>("/api/tags/specialties");
+  async bulkUpload(files: File[]): Promise<UploadResponse[]> {
+    const formData = new FormData();
+    for (const file of files) {
+      formData.append("files", file);
+    }
+    return this.requestMultipart<UploadResponse[]>("/api/content/bulk-upload", formData);
   }
 
-  async renameTag(id: number, name: string): Promise<Tag> {
-    return this.request<Tag>(`/api/tags/${id}`, {
-      method: "PUT",
-      body: JSON.stringify({ name }),
-    });
+  // ─── Bookmarks ─────────────────────────────────────────────────────────────
+
+  async toggleBookmark(contentId: number): Promise<BookmarkToggleResponse> {
+    return this.request<BookmarkToggleResponse>(`/api/bookmarks/${contentId}`, { method: "POST" });
   }
 
-  async mergeTags(sourceIds: number[], targetId: number): Promise<Tag> {
-    return this.request<Tag>("/api/tags/merge", {
+  async getBookmarks(): Promise<ContentListItem[]> {
+    return this.request<ContentListItem[]>("/api/bookmarks");
+  }
+
+  // ─── History ───────────────────────────────────────────────────────────────
+
+  async getHistory(): Promise<ReadingHistoryItem[]> {
+    return this.request<ReadingHistoryItem[]>("/api/history");
+  }
+
+  // ─── Analytics ─────────────────────────────────────────────────────────────
+
+  async getAIProviderStats(dateRange: AnalyticsDateRange = "30d"): Promise<AIProviderStats> {
+    return this.request<AIProviderStats>(`/api/analytics/ai-providers?date_range=${dateRange}`);
+  }
+
+  async getViewsAnalytics(dateRange: AnalyticsDateRange = "30d"): Promise<ViewsAnalytics> {
+    return this.request<ViewsAnalytics>(`/api/analytics/views?date_range=${dateRange}`);
+  }
+
+  async getTagsAnalytics(): Promise<TagsAnalytics> {
+    return this.request<TagsAnalytics>("/api/analytics/tags");
+  }
+
+  async getSearchesAnalytics(dateRange: AnalyticsDateRange = "30d"): Promise<SearchesAnalytics> {
+    return this.request<SearchesAnalytics>(`/api/analytics/searches?date_range=${dateRange}`);
+  }
+
+  async getUsersAnalytics(dateRange: AnalyticsDateRange = "30d"): Promise<UsersAnalytics> {
+    return this.request<UsersAnalytics>(`/api/analytics/users?date_range=${dateRange}`);
+  }
+
+  async logSearch(query: string, resultCount: number | null = null): Promise<void> {
+    return this.request<void>("/api/analytics/log-search", {
       method: "POST",
-      body: JSON.stringify({ source_ids: sourceIds, target_id: targetId }),
+      body: JSON.stringify({ query, result_count: resultCount }),
     });
   }
 
-  async deleteTag(id: number): Promise<void> {
-    return this.request<void>(`/api/tags/${id}`, { method: "DELETE" });
+  async getPublishingAnalytics(dateRange: AnalyticsDateRange = "30d"): Promise<PublishingAnalytics> {
+    return this.request<PublishingAnalytics>(`/api/analytics/publishing?date_range=${dateRange}`);
+  }
+
+  // ─── Ask AI ────────────────────────────────────────────────────────────────
+
+  async streamAskAI(
+    contentId: number,
+    question: string,
+    conversationHistory: AskAIMessage[],
+    onChunk: (text: string) => void,
+  ): Promise<void> {
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (this.token) headers["Authorization"] = `Bearer ${this.token}`;
+
+    const res = await fetch(`${this.baseUrl}/api/content/${contentId}/ask`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ question, conversation_history: conversationHistory }),
+    });
+
+    if (!res.ok) {
+      const error = await res.json().catch(() => ({ detail: "Request failed" }));
+      throw new Error(error.detail ?? "Request failed");
+    }
+
+    const reader = res.body!.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n");
+      buffer = lines.pop() ?? "";
+
+      for (const line of lines) {
+        if (!line.startsWith("data: ")) continue;
+        const data = line.slice(6);
+        if (data === "[DONE]") return;
+        try {
+          const parsed = JSON.parse(data) as { text: string };
+          if (parsed.text) onChunk(parsed.text);
+        } catch {
+          // ignore malformed chunks
+        }
+      }
+    }
   }
 }
 
