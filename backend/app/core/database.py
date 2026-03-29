@@ -13,7 +13,14 @@ def _make_async_url(url: str) -> str:
 
 
 def create_engine(database_url: str):
-    return create_async_engine(_make_async_url(database_url), echo=False)
+    return create_async_engine(
+        _make_async_url(database_url),
+        echo=False,
+        pool_pre_ping=True,
+        pool_recycle=300,
+        pool_size=5,
+        max_overflow=10,
+    )
 
 
 def create_session_factory(engine) -> async_sessionmaker[AsyncSession]:
