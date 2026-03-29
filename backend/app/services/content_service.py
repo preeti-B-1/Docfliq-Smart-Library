@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 
 from sqlalchemy import and_, cast, delete as sa_delete, func, literal, or_, select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.postgresql import REGCONFIG
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -13,6 +14,16 @@ from app.models.reading_history import ReadingHistory
 from app.models.tag import Tag
 from app.schemas.content import ContentUpdateRequest
 from app.services.ai_service import generate_embedding
+
+
+def _weighted_average(vectors: list, weights: list[float]) -> list[float]:
+    total = sum(weights)
+    dim = len(vectors[0])
+    result = [0.0] * dim
+    for vec, w in zip(vectors, weights):
+        for i, v in enumerate(vec):
+            result[i] += v * w / total
+    return result
 
 
 async def list_content(
@@ -74,16 +85,49 @@ async def list_content(
             .limit(per_page)
         )
     else:
-        query = (
-            select(Content)
-            .where(base_filter)
-            .options(selectinload(Content.content_tags).selectinload(ContentTag.tag))
-        )
-        count_result = await db.scalar(select(func.count()).select_from(query.subquery()))
-        total = count_result or 0
+        history_rows: list = []
+        if user_id and sort != "popular":
+            history_result = await db.execute(
+                select(Content.embedding, ReadingHistory.last_read_at)
+                .join(ReadingHistory, Content.id == ReadingHistory.content_id)
+                .where(ReadingHistory.user_id == user_id)
+                .where(Content.embedding.is_not(None))
+                .order_by(ReadingHistory.last_read_at.desc())
+                .limit(50)
+            )
+            history_rows = history_result.fetchall()
 
-        order_col = Content.view_count.desc() if sort == "popular" else Content.published_at.desc()
-        items_query = query.order_by(order_col).offset((page - 1) * per_page).limit(per_page)
+        if len(history_rows) >= 3:
+            embeddings = [row.embedding for row in history_rows]
+            weights = [1.0 / (i + 1) for i in range(len(embeddings))]
+            user_vector = _weighted_average(embeddings, weights)
+
+            count_result = await db.scalar(
+                select(func.count()).select_from(
+                    select(Content).where(base_filter).subquery()
+                )
+            )
+            total = count_result or 0
+
+            items_query = (
+                select(Content)
+                .where(base_filter)
+                .options(selectinload(Content.content_tags).selectinload(ContentTag.tag))
+                .order_by(Content.embedding.cosine_distance(user_vector))
+                .offset((page - 1) * per_page)
+                .limit(per_page)
+            )
+        else:
+            query = (
+                select(Content)
+                .where(base_filter)
+                .options(selectinload(Content.content_tags).selectinload(ContentTag.tag))
+            )
+            count_result = await db.scalar(select(func.count()).select_from(query.subquery()))
+            total = count_result or 0
+
+            order_col = Content.view_count.desc() if sort == "popular" else Content.published_at.desc()
+            items_query = query.order_by(order_col).offset((page - 1) * per_page).limit(per_page)
 
     result = await db.execute(items_query)
     contents = list(result.scalars().all())
@@ -154,6 +198,16 @@ async def get_content_by_id(
     if content.status == "published":
         content.view_count += 1
         db.add(PageView(user_id=user_id, content_id=content_id))
+        if user_id is not None:
+            now = datetime.now(timezone.utc)
+            await db.execute(
+                pg_insert(ReadingHistory)
+                .values(user_id=user_id, content_id=content_id, last_read_at=now)
+                .on_conflict_do_update(
+                    constraint="uq_user_reading",
+                    set_={"last_read_at": now},
+                )
+            )
         await db.commit()
         result = await db.execute(detail_query)
         content = result.scalar_one_or_none()
@@ -177,13 +231,17 @@ async def update_content(
     if content is None:
         return None
 
+    search_index_dirty = False
+
     if update_data.title is not None:
+        search_index_dirty = search_index_dirty or update_data.title != content.title
         content.title = update_data.title
     if update_data.description is not None:
         content.description = update_data.description
     if update_data.body_text is not None:
         content.body_text = update_data.body_text
     if update_data.ai_summary is not None:
+        search_index_dirty = search_index_dirty or update_data.ai_summary != content.ai_summary
         content.ai_summary = update_data.ai_summary
 
     if update_data.tags is not None:
@@ -211,6 +269,12 @@ async def update_content(
                     db.add(tag)
                     await db.flush()
                 db.add(ContentTag(content_id=content_id, tag_id=tag.id))
+
+    if search_index_dirty:
+        content.search_vector = func.to_tsvector(
+            "english",
+            content.title + " " + (content.ai_summary or ""),
+        )
 
     await db.commit()
     result = await db.execute(detail_query)
@@ -241,15 +305,56 @@ async def unpublish_content(db: AsyncSession, content_id: int) -> Content | None
     return content
 
 
+async def get_related_content(
+    db: AsyncSession,
+    content_id: int,
+    limit: int = 4,
+) -> list[Content]:
+    current_tag_ids = select(ContentTag.tag_id).where(ContentTag.content_id == content_id)
+
+    overlap_subq = (
+        select(ContentTag.content_id, func.count().label("overlap"))
+        .where(
+            ContentTag.tag_id.in_(current_tag_ids),
+            ContentTag.content_id != content_id,
+        )
+        .group_by(ContentTag.content_id)
+        .subquery()
+    )
+
+    result = await db.execute(
+        select(Content)
+        .join(overlap_subq, Content.id == overlap_subq.c.content_id)
+        .where(Content.status == "published")
+        .options(selectinload(Content.content_tags).selectinload(ContentTag.tag))
+        .order_by(overlap_subq.c.overlap.desc())
+        .limit(limit)
+    )
+    return list(result.scalars().all())
+
+
 async def delete_content(db: AsyncSession, content_id: int) -> bool:
+    from app.utils.storage import delete_images
+    from bs4 import BeautifulSoup
+
     result = await db.execute(select(Content).where(Content.id == content_id))
     content = result.scalar_one_or_none()
     if content is None:
         return False
+
+    image_urls = [
+        img["src"]
+        for img in BeautifulSoup(content.body_text or "", "html.parser").find_all("img")
+        if img.get("src", "").startswith("http")
+    ]
 
     await db.execute(sa_delete(Bookmark).where(Bookmark.content_id == content_id))
     await db.execute(sa_delete(PageView).where(PageView.content_id == content_id))
     await db.execute(sa_delete(ReadingHistory).where(ReadingHistory.content_id == content_id))
     await db.delete(content)
     await db.commit()
+
+    if image_urls:
+        await delete_images(image_urls)
+
     return True

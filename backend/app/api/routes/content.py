@@ -5,6 +5,7 @@ from sqlalchemy.orm import selectinload
 
 from app.api.deps.auth import get_current_user, get_optional_user, require_admin
 from app.api.deps.database import get_db
+from app.models.bookmark import Bookmark
 from app.models.content import Content
 from app.models.content_tag import ContentTag
 from app.models.user import User
@@ -27,7 +28,7 @@ _MAX_FILE_SIZE = 25 * 1024 * 1024
 _ALLOWED_EXTENSIONS = {".pdf", ".docx"}
 
 
-def _build_content_response(content: Content) -> ContentResponse:
+def _build_content_response(content: Content, is_bookmarked: bool = False) -> ContentResponse:
     tags = [TagResponse.model_validate(ct.tag) for ct in content.content_tags]
     return ContentResponse(
         id=content.id,
@@ -38,6 +39,7 @@ def _build_content_response(content: Content) -> ContentResponse:
         processing_status=content.processing_status,
         ai_summary=content.ai_summary,
         view_count=content.view_count,
+        is_bookmarked=is_bookmarked,
         tags=tags,
         created_at=content.created_at,
         updated_at=content.updated_at,
@@ -126,6 +128,51 @@ async def list_drafts(
     return [_build_card_response(d) for d in drafts]
 
 
+@router.post("/bulk-upload", response_model=list[ContentUploadResponse], status_code=status.HTTP_201_CREATED)
+async def bulk_upload_content(
+    background_tasks: BackgroundTasks,
+    files: list[UploadFile] = File(...),
+    db: AsyncSession = Depends(get_db),
+    _admin: User = Depends(require_admin),
+) -> list[ContentUploadResponse]:
+    if len(files) > 10:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Maximum 10 files per bulk upload.",
+        )
+
+    validated: list[tuple[str, bytes]] = []
+    for file in files:
+        filename = file.filename or ""
+        ext = ("." + filename.rsplit(".", 1)[-1].lower()) if "." in filename else ""
+        if ext not in _ALLOWED_EXTENSIONS:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"'{filename}': only .pdf and .docx files are accepted.",
+            )
+        data = await file.read()
+        if len(data) > _MAX_FILE_SIZE:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"'{filename}': exceeds the 25MB limit.",
+            )
+        validated.append((filename, data))
+
+    results: list[ContentUploadResponse] = []
+    for filename, data in validated:
+        title = filename.rsplit(".", 1)[0] if "." in filename else filename
+        content = await content_service.create_content(
+            title=title,
+            description=None,
+            body_text="",
+            db=db,
+        )
+        background_tasks.add_task(ai_service.process_file_content, content.id, filename, data)
+        results.append(ContentUploadResponse(id=content.id, processing_status=content.processing_status))
+
+    return results
+
+
 @router.post("/upload", response_model=ContentUploadResponse, status_code=status.HTTP_201_CREATED)
 async def upload_content(
     background_tasks: BackgroundTasks,
@@ -200,6 +247,35 @@ async def get_content_status(
     return ContentStatusResponse(id=content.id, processing_status=content.processing_status)
 
 
+@router.get("/{content_id}/related", response_model=list[ContentListItemResponse])
+async def get_related_content(
+    content_id: int,
+    db: AsyncSession = Depends(get_db),
+) -> list[ContentListItemResponse]:
+    related = await content_service.get_related_content(db=db, content_id=content_id)
+    items: list[ContentListItemResponse] = []
+    for c in related:
+        tags = [ct.tag for ct in c.content_tags]
+        specialty_tags = [t.name for t in tags if t.type == "specialty"]
+        topic_tags = [t.name for t in tags if t.type == "topic"]
+        difficulty_tags = [t.name for t in tags if t.type == "difficulty"]
+        items.append(
+            ContentListItemResponse(
+                id=c.id,
+                title=c.title,
+                description=c.description,
+                ai_summary=c.ai_summary,
+                specialty_tags=specialty_tags,
+                topic_tags=topic_tags,
+                difficulty_tag=difficulty_tags[0] if difficulty_tags else None,
+                view_count=c.view_count,
+                published_at=c.published_at,
+                is_bookmarked=False,
+            )
+        )
+    return items
+
+
 @router.get("/{content_id}", response_model=ContentResponse)
 async def get_content(
     content_id: int,
@@ -217,7 +293,17 @@ async def get_content(
     if content is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Content not found.")
 
-    return _build_content_response(content)
+    is_bookmarked = False
+    if current_user:
+        bm = await db.execute(
+            select(Bookmark).where(
+                Bookmark.user_id == current_user.id,
+                Bookmark.content_id == content_id,
+            )
+        )
+        is_bookmarked = bm.scalar_one_or_none() is not None
+
+    return _build_content_response(content, is_bookmarked=is_bookmarked)
 
 
 @router.put("/{content_id}", response_model=ContentResponse)

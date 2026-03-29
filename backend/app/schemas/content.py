@@ -73,6 +73,10 @@ class ContentCardResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class ReadingHistoryItemResponse(ContentListItemResponse):
+    last_read_at: datetime
+
+
 class ContentResponse(BaseModel):
     id: int
     title: str
@@ -82,6 +86,7 @@ class ContentResponse(BaseModel):
     processing_status: str
     ai_summary: Optional[str]
     view_count: int
+    is_bookmarked: bool = False
     tags: list[TagResponse]
     created_at: datetime
     updated_at: datetime
