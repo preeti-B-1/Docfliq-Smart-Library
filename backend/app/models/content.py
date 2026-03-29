@@ -16,6 +16,7 @@ class Content(Base):
     title: Mapped[str] = mapped_column(String(500), nullable=False)
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     body_text: Mapped[str] = mapped_column(Text, nullable=False)
+    plain_text: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="draft")
     processing_status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending")
     ai_summary: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
