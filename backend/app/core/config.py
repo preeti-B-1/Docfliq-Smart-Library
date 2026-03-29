@@ -9,6 +9,8 @@ class Settings(BaseSettings):
     OPENAI_API_KEY: str = ""
     ALLOWED_DOMAINS: str = "gmail.com,docfliq.com"
     ALLOWED_ORIGINS: str = "http://localhost:3000"
+    SUPABASE_URL: str = ""
+    SUPABASE_SERVICE_KEY: str = ""
     
 
     @property
