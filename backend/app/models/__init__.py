@@ -7,6 +7,7 @@ from app.models.bookmark import Bookmark
 from app.models.reading_history import ReadingHistory
 from app.models.page_view import PageView
 from app.models.search_log import SearchLog
+from app.models.ai_provider_log import AIProviderLog
 
 __all__ = [
     "Base",
@@ -18,4 +19,5 @@ __all__ = [
     "ReadingHistory",
     "PageView",
     "SearchLog",
+    "AIProviderLog",
 ]

@@ -1,13 +1,15 @@
 import json
 import logging
+import time
 from typing import Any
 
 from anthropic import AsyncAnthropic
 from openai import AsyncOpenAI
-from sqlalchemy import select, func, text
+from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
+from app.models.ai_provider_log import AIProviderLog
 from app.models.content import Content
 from app.models.content_tag import ContentTag
 from app.models.tag import Tag
@@ -18,6 +20,8 @@ logger = logging.getLogger(__name__)
 _SYSTEM_PROMPT = """You are a medical content tagging assistant. Analyze the provided medical text and return a JSON object with exactly these fields:
 
 {
+  "title": "<concise article title, max 15 words>",
+  "description": "<one sentence subtitle or abstract, max 30 words>",
   "specialty": ["<1-2 specialties from the allowed list only>"],
   "topics": ["<3-4 freeform topic tags>"],
   "difficulty": "<Beginner|Intermediate|Advanced>",
@@ -32,7 +36,7 @@ Cardiology, Neurology, Oncology, Pediatrics, Orthopedics, Dermatology, Gastroent
 Return ONLY valid JSON. No explanation, no markdown, no code fences."""
 
 _MAX_TEXT_CHARS = 12000
-_MAX_EMBEDDING_CHARS = 30000  # ~5000 words
+_MAX_EMBEDDING_CHARS = 30000
 
 
 async def tag_content(content_id: int, plain_text: str) -> None:
@@ -43,7 +47,6 @@ async def tag_content(content_id: int, plain_text: str) -> None:
 
 
 async def process_file_content(content_id: int, filename: str, data: bytes) -> None:
-    import asyncio
     from app.api.deps.database import db_session_factory
     from app.utils.text_extractor import convert_to_html
 
@@ -57,10 +60,11 @@ async def process_file_content(content_id: int, filename: str, data: bytes) -> N
         await db.commit()
 
         try:
-            html, plain_text = await asyncio.to_thread(convert_to_html, filename, data)
+            html, plain_text = await convert_to_html(filename, data)
             content.body_text = html
+            content.plain_text = plain_text
 
-            ai_result = await _call_claude(plain_text, content.description)
+            ai_result = await _call_ai_with_fallback(plain_text, content.description, content_id, db)
             await _save_tags(content, ai_result, db)
 
             embedding = await generate_embedding(content.title + " " + plain_text)
@@ -84,10 +88,11 @@ async def _process_tagging(content_id: int, plain_text: str, db: AsyncSession) -
         return
 
     content.processing_status = "processing"
+    content.plain_text = plain_text
     await db.commit()
 
     try:
-        ai_result = await _call_claude(plain_text, content.description)
+        ai_result = await _call_ai_with_fallback(plain_text, content.description, content_id, db)
         await _save_tags(content, ai_result, db)
 
         embedding = await generate_embedding(content.title + " " + plain_text)
@@ -96,13 +101,69 @@ async def _process_tagging(content_id: int, plain_text: str, db: AsyncSession) -
             "english",
             content.title + " " + (content.ai_summary or ""),
         )
-
         content.processing_status = "completed"
     except Exception:
         logger.exception("AI processing failed for content %d", content_id)
         content.processing_status = "failed"
 
     await db.commit()
+
+
+async def _call_ai_with_fallback(
+    plain_text: str,
+    description: str | None,
+    content_id: int,
+    db: AsyncSession,
+) -> dict[str, Any]:
+    start = time.monotonic()
+    try:
+        result = await _call_claude(plain_text, description)
+        duration_ms = int((time.monotonic() - start) * 1000)
+        await _log_provider(content_id, "claude", success=True, fallback=False, error=None, duration_ms=duration_ms, db=db)
+        return result
+    except Exception as exc:
+        duration_ms = int((time.monotonic() - start) * 1000)
+        error_msg = str(exc)
+        logger.warning("Claude failed for content %d (%dms): %s — trying GPT fallback", content_id, duration_ms, error_msg)
+        await _log_provider(content_id, "claude", success=False, fallback=False, error=error_msg, duration_ms=duration_ms, db=db)
+
+    start = time.monotonic()
+    try:
+        result = await _call_gpt(plain_text, description)
+        duration_ms = int((time.monotonic() - start) * 1000)
+        await _log_provider(content_id, "gpt-4o-mini", success=True, fallback=True, error=None, duration_ms=duration_ms, db=db)
+        return result
+    except Exception as exc:
+        duration_ms = int((time.monotonic() - start) * 1000)
+        error_msg = str(exc)
+        logger.error("GPT fallback also failed for content %d (%dms): %s", content_id, duration_ms, error_msg)
+        await _log_provider(content_id, "gpt-4o-mini", success=False, fallback=True, error=error_msg, duration_ms=duration_ms, db=db)
+        raise
+
+
+async def _log_provider(
+    content_id: int,
+    provider: str,
+    success: bool,
+    fallback: bool,
+    error: str | None,
+    duration_ms: int,
+    db: AsyncSession,
+    source: str = "tagging",
+) -> None:
+    try:
+        db.add(AIProviderLog(
+            content_id=content_id,
+            provider=provider,
+            source=source,
+            success=success,
+            used_as_fallback=fallback,
+            error_message=error,
+            duration_ms=duration_ms,
+        ))
+        await db.flush()
+    except Exception:
+        logger.exception("Failed to write AI provider log for content %d", content_id)
 
 
 async def generate_embedding(text: str) -> list[float]:
@@ -121,14 +182,9 @@ async def _call_claude(body_text: str, description: str | None = None) -> dict[s
     if not truncated.strip():
         raise ValueError("No readable text could be extracted from this file.")
 
-    logger.debug("Sending %d chars to Claude. Preview: %s", len(truncated), truncated[:300])
-
     client = AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
 
-    if description:
-        prompt = f"Admin description: {description}\n\nArticle content:\n{truncated}"
-    else:
-        prompt = truncated
+    prompt = f"Admin description: {description}\n\nArticle content:\n{truncated}" if description else truncated
 
     message = await client.messages.create(
         model="claude-sonnet-4-6",
@@ -139,8 +195,6 @@ async def _call_claude(body_text: str, description: str | None = None) -> dict[s
 
     raw = message.content[0].text.strip()
 
-    logger.debug("Claude raw response: %s", raw[:200])
-
     if raw.startswith("```"):
         parts = raw.split("```")
         raw = parts[1] if len(parts) > 1 else raw
@@ -149,6 +203,40 @@ async def _call_claude(body_text: str, description: str | None = None) -> dict[s
 
     if not raw:
         raise ValueError("Claude returned an empty response.")
+
+    return json.loads(raw)
+
+
+async def _call_gpt(body_text: str, description: str | None = None) -> dict[str, Any]:
+    truncated = body_text[:_MAX_TEXT_CHARS]
+
+    if not truncated.strip():
+        raise ValueError("No readable text could be extracted from this file.")
+
+    client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
+
+    prompt = f"Admin description: {description}\n\nArticle content:\n{truncated}" if description else truncated
+
+    response = await client.chat.completions.create(
+        model="gpt-4o-mini",
+        max_tokens=1024,
+        messages=[
+            {"role": "system", "content": _SYSTEM_PROMPT},
+            {"role": "user", "content": f"Tag this medical content:\n\n{prompt}"},
+        ],
+    )
+
+    raw = response.choices[0].message.content or ""
+    raw = raw.strip()
+
+    if raw.startswith("```"):
+        parts = raw.split("```")
+        raw = parts[1] if len(parts) > 1 else raw
+        if raw.startswith("json"):
+            raw = raw[4:].strip()
+
+    if not raw:
+        raise ValueError("GPT returned an empty response.")
 
     return json.loads(raw)
 
@@ -197,6 +285,14 @@ async def _save_tags(content: Content, ai_result: dict[str, Any], db: AsyncSessi
     summary = str(ai_result.get("summary", "")).strip()
     if summary:
         content.ai_summary = summary
+
+    ai_title = str(ai_result.get("title", "")).strip()
+    if ai_title:
+        content.title = ai_title
+
+    ai_description = str(ai_result.get("description", "")).strip()
+    if ai_description:
+        content.description = ai_description
 
     await db.flush()
 
