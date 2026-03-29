@@ -19,16 +19,23 @@ import {
 } from "@/components/ui/dialog";
 import type { ContentDraft } from "@/types";
 
+/* OLD — blue draft chip colors
 function tagChipClass(type: string, name: string): string {
   if (type === "specialty") return "bg-[#DBEAFE] text-[#1E40AF]";
+  if (type === "difficulty") { ... }
+  return "bg-[#F1F5F9] text-[#334155]";
+}
+*/
+function tagChipClass(type: string, name: string): string {
+  if (type === "specialty") return "bg-violet-50 text-violet-700 border border-violet-200";
   if (type === "difficulty") {
     switch (name.toLowerCase()) {
-      case "beginner": return "bg-[#D1FAE5] text-[#065F46]";
-      case "intermediate": return "bg-[#FEF3C7] text-[#92400E]";
-      case "advanced": return "bg-[#FEE2E2] text-[#991B1B]";
+      case "beginner": return "bg-emerald-50 text-emerald-700 border border-emerald-200";
+      case "intermediate": return "bg-amber-50 text-amber-700 border border-amber-200";
+      case "advanced": return "bg-red-50 text-red-700 border border-red-200";
     }
   }
-  return "bg-[#F1F5F9] text-[#334155]";
+  return "bg-zinc-100 text-zinc-600 border border-zinc-200";
 }
 
 const chipBase = "inline-flex items-center rounded px-2 py-0.5 text-xs font-medium";
@@ -49,7 +56,7 @@ function DraftCard({
   const topicTags = draft.tags.filter((t) => t.type === "topic");
 
   return (
-    <div className="bg-card border border-[#DBEAFE] rounded-xl p-5 flex flex-col gap-3">
+    <div className="bg-white border border-zinc-200 rounded-xl p-5 flex flex-col gap-3 shadow-card hover:shadow-card-hover transition-all duration-200">
       <div className="flex items-start justify-between gap-4">
         <div className="flex flex-col gap-1 min-w-0">
           <Link
@@ -200,12 +207,13 @@ function DraftsContent() {
 
       <div className="flex items-center justify-between">
         <div>
-<p className="text-sm text-muted-foreground mt-0.5">
+          <h1 className="text-2xl font-bold text-zinc-900 font-display">Drafts</h1>
+          <p className="text-sm text-zinc-400 mt-0.5">
             {drafts.length} {drafts.length === 1 ? "draft" : "drafts"} waiting for review
           </p>
         </div>
         <Link href="/upload">
-          <Button>Upload new</Button>
+          <Button className="bg-violet-600 hover:bg-violet-700 text-white">Upload new</Button>
         </Link>
       </div>
 
@@ -216,7 +224,7 @@ function DraftsContent() {
       )}
 
       {drafts.length === 0 ? (
-        <div className="flex flex-col items-center justify-center h-48 bg-card border border-[#DBEAFE] rounded-xl gap-3">
+        <div className="flex flex-col items-center justify-center h-48 bg-zinc-50 border border-zinc-200 rounded-xl gap-3">
           <p className="text-muted-foreground">No drafts. Upload content to get started.</p>
           <Link href="/upload">
             <Button variant="outline">Upload content</Button>

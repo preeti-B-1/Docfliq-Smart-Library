@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { Eye } from "lucide-react";
 
@@ -16,6 +17,7 @@ import { Button } from "@/components/ui/button";
 import { useContent } from "@/hooks/useContent";
 import { useDebounce } from "@/hooks/useDebounce";
 import { PAGINATION_CONFIG } from "@/config/constants";
+import { apiClient } from "@/lib/api-client";
 import { formatRelativeDate, formatViewCount } from "@/lib/utils";
 import type { ContentFilters, ContentListItem } from "@/types";
 
@@ -26,19 +28,19 @@ interface SidebarItemProps {
 
 function SidebarItem({ item, right }: SidebarItemProps) {
   return (
-    <li className="flex items-start justify-between gap-2 py-2.5 border-b border-[#F1F5F9] last:border-0">
-      <div className="flex flex-col gap-1 min-w-0">
-        <Link
-          href={`/article/${item.id}`}
-          className="text-sm font-semibold text-foreground leading-snug hover:text-primary transition-colors"
-        >
-          {item.title}
-        </Link>
+    <li className="py-3 border-b border-zinc-100 last:border-0 flex flex-col gap-1.5">
+      <Link
+        href={`/article/${item.id}`}
+        className="text-sm font-medium text-zinc-800 leading-snug hover:text-violet-700 transition-colors"
+      >
+        {item.title}
+      </Link>
+      <div className="flex items-center justify-between gap-2">
         {item.specialty_tags[0] && (
-          <span className="text-xs text-[#64748B]">{item.specialty_tags[0]}</span>
+          <span className="text-xs text-zinc-400">{item.specialty_tags[0]}</span>
         )}
+        <span className="text-xs text-muted-foreground whitespace-nowrap ml-auto">{right}</span>
       </div>
-      <span className="text-xs text-muted-foreground whitespace-nowrap shrink-0 mt-0.5">{right}</span>
     </li>
   );
 }
@@ -49,16 +51,16 @@ function TrendingSidebar({ token }: { token: string | null }) {
     token
   );
   const { data: popularData, isLoading: popularLoading } = useContent(
-    { per_page: 3, sort: "popular" },
+    { per_page: 4, sort: "popular" },
     token
   );
 
   return (
     <div
-      className="w-[280px] shrink-0 border-l border-[#E2E8F0] pl-6 sticky top-6 overflow-y-auto"
+      className="w-[280px] shrink-0 border-l border-zinc-200 pl-6 sticky top-6 overflow-y-auto"
       style={{ maxHeight: "calc(100vh - 5rem)" }}
     >
-      <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-3">
+      <h3 className="text-xs font-semibold uppercase tracking-widest text-zinc-400 mb-3">
         Recently Added
       </h3>
       {recentLoading ? (
@@ -75,9 +77,9 @@ function TrendingSidebar({ token }: { token: string | null }) {
         </ul>
       )}
 
-      <div className="my-5 border-t border-[#E2E8F0]" />
+      <div className="my-5 border-t border-zinc-200" />
 
-      <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-3">
+      <h3 className="text-xs font-semibold uppercase tracking-widest text-zinc-400 mb-3">
         Popular
       </h3>
       {popularLoading ? (
@@ -105,13 +107,17 @@ function TrendingSidebar({ token }: { token: string | null }) {
 function LibraryContent() {
   const { data: session } = useSession();
   const token = session?.backendToken ?? null;
+  const searchParams = useSearchParams();
 
-  const [searchInput, setSearchInput] = useState("");
+  const [searchInput, setSearchInput] = useState(() => searchParams.get("q") ?? "");
   const [selectedSpecialties, setSelectedSpecialties] = useState<string[]>([]);
   const [selectedDifficulties, setSelectedDifficulties] = useState<string[]>([]);
   const [page, setPage] = useState(1);
 
   const debouncedSearch = useDebounce(searchInput, 300);
+  const logDebounced = useDebounce(searchInput, 1000);
+  const lastLogged = useRef("");
+  const pendingResultCount = useRef<number | null>(null);
 
   const mainFilters: ContentFilters = {
     search: debouncedSearch || undefined,
@@ -122,6 +128,19 @@ function LibraryContent() {
   };
 
   const { data: mainData, isLoading: mainLoading, error: mainError } = useContent(mainFilters, token);
+
+  useEffect(() => {
+    if (!mainLoading) {
+      pendingResultCount.current = mainData?.total ?? null;
+    }
+  }, [mainLoading, mainData]);
+
+  useEffect(() => {
+    if (logDebounced.length < 2 || logDebounced === lastLogged.current || !token) return;
+    lastLogged.current = logDebounced;
+    apiClient.setToken(token);
+    apiClient.logSearch(logDebounced, pendingResultCount.current).catch(() => {});
+  }, [logDebounced, token]);
 
   const toggleSpecialty = useCallback((specialty: string) => {
     setPage(1);
@@ -156,12 +175,14 @@ function LibraryContent() {
   return (
     <div className="flex flex-col gap-5">
       <div className="flex gap-6 items-start">
-        <SidebarFilters
-          selectedSpecialties={selectedSpecialties}
-          selectedDifficulties={selectedDifficulties}
-          onSpecialtyChange={toggleSpecialty}
-          onDifficultyChange={toggleDifficulty}
-        />
+        <div className="sticky top-6 shrink-0" style={{ maxHeight: "calc(100vh - 5rem)" }}>
+          <SidebarFilters
+            selectedSpecialties={selectedSpecialties}
+            selectedDifficulties={selectedDifficulties}
+            onSpecialtyChange={toggleSpecialty}
+            onDifficultyChange={toggleDifficulty}
+          />
+        </div>
 
         <div className="flex-1 min-w-0 flex flex-col gap-4">
           <SearchBar value={searchInput} onChange={handleSearchChange} />
@@ -185,20 +206,31 @@ function LibraryContent() {
           {!mainLoading && !mainError && mainData && (
             <>
               {mainData.items.length === 0 ? (
-                <p className="text-sm text-gray-400 py-12 text-center">No articles match your search.</p>
+                <div className="flex flex-col items-center justify-center py-16 text-center">
+                  <div className="w-12 h-12 rounded-full bg-zinc-100 flex items-center justify-center mb-4">
+                    <svg className="w-6 h-6 text-zinc-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z" />
+                    </svg>
+                  </div>
+                  <p className="text-zinc-500 font-medium">No articles match your search</p>
+                  <p className="text-sm text-zinc-400 mt-1">Try adjusting your filters or search terms</p>
+                </div>
               ) : (
                 <>
-                  <div className="grid grid-cols-1 gap-5">
+                  {debouncedSearch && (
+                    <p className="text-sm text-zinc-400 font-medium">
+                      {mainData.total} result{mainData.total !== 1 ? "s" : ""}
+                    </p>
+                  )}
+
+                  <div className="grid grid-cols-1 gap-3">
                     {mainData.items.map((item) => (
-                      <ArticleCard key={item.id} content={item} />
+                      <ArticleCard key={item.id} content={item} token={token} />
                     ))}
                   </div>
 
                   {mainData.total_pages > 1 && (
-                    <div className="flex items-center justify-between mt-4 pt-4 border-t border-gray-100">
-                      <p className="text-sm text-gray-500">
-                        {mainData.total} article{mainData.total !== 1 ? "s" : ""}
-                      </p>
+                    <div className="flex items-center justify-end mt-4 pt-4 border-t border-gray-100">
                       <div className="flex items-center gap-2">
                         <Button
                           variant="outline"

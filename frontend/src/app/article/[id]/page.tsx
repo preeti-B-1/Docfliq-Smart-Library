@@ -1,8 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { ChevronDown } from "lucide-react";
+import { Bookmark, ChevronDown, Sparkles, X } from "lucide-react";
+import { toast } from "sonner";
 import { useAuth } from "@/hooks/useAuth";
 import { apiClient } from "@/lib/api-client";
 import { formatDate, formatViewCount, cn } from "@/lib/utils";
@@ -26,22 +28,33 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
-import type { Content, TagInput } from "@/types";
+import ArticleCard from "@/components/content/ArticleCard";
+import AskAIPanel from "@/components/content/AskAIPanel";
+import type { Content, ContentListItem, TagInput } from "@/types";
 
+/* OLD — blue tag chip colors
 function tagChipClass(type: string, name: string): string {
-  if (type === "specialty") return "border border-[#BFDBFE] text-[#1E40AF] bg-transparent";
-  if (type === "difficulty") {
-    switch (name.toLowerCase()) {
-      case "beginner": return "border border-[#A7F3D0] text-[#065F46] bg-transparent";
-      case "intermediate": return "border border-[#FDE68A] text-[#92400E] bg-transparent";
-      case "advanced": return "border border-[#FECACA] text-[#991B1B] bg-transparent";
-    }
-  }
+  if (type === "specialty") return "bg-violet-50 text-violet-700 border border-violet-200";
+  if (type === "difficulty") { ... }
   return "border border-[#E2E8F0] text-[#475569] bg-transparent";
 }
+*/
 
-const chipBase = "inline-flex items-center rounded px-2 py-0.5 text-xs font-medium";
+function tagChipClass(type: string, name: string): string {
+  if (type === "specialty") return "bg-violet-50 text-violet-700 border border-violet-200";
+  if (type === "difficulty") {
+    switch (name.toLowerCase()) {
+      case "beginner": return "bg-emerald-50 text-emerald-700 border border-emerald-200";
+      case "intermediate": return "bg-amber-50 text-amber-700 border border-amber-200";
+      case "advanced": return "bg-red-50 text-red-700 border border-red-200";
+    }
+  }
+  return "bg-zinc-100 text-zinc-600 border border-zinc-200";
+}
 
+const chipBase = "inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium";
+
+/* groupTags — unused, kept for reference
 function groupTags(tags: Content["tags"]) {
   return {
     specialty: tags.filter((t) => t.type === "specialty"),
@@ -51,6 +64,7 @@ function groupTags(tags: Content["tags"]) {
     content_type: tags.filter((t) => t.type === "content_type"),
   };
 }
+*/
 
 function TagsSection({ tags }: { tags: Content["tags"] }) {
   const [showAllKeyTerms, setShowAllKeyTerms] = useState(false);
@@ -65,15 +79,19 @@ function TagsSection({ tags }: { tags: Content["tags"] }) {
   if (topics.length === 0 && keyTerms.length === 0) return null;
 
   return (
-    <div className="flex flex-col gap-3 pt-6 border-t border-[#E2E8F0]">
+    <div className="flex flex-col gap-3 pt-6 border-t border-zinc-200">
       {topics.length > 0 && (
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-xs text-muted-foreground w-20 shrink-0">Topics:</span>
           <div className="flex flex-wrap gap-1.5">
             {topics.map((tag) => (
-              <span key={tag.id} className={cn(chipBase, tagChipClass("topic", tag.name))}>
+              <Link
+                key={tag.id}
+                href={`/library?q=${encodeURIComponent(tag.name)}`}
+                className={cn(chipBase, "bg-violet-50 text-violet-700 border border-violet-200 hover:bg-violet-100 hover:underline transition-colors")}
+              >
                 {tag.name}
-              </span>
+              </Link>
             ))}
           </div>
         </div>
@@ -130,9 +148,15 @@ export default function ArticleDetailPage() {
   const [editTags, setEditTags] = useState<TagInput[]>([]);
   const [saving, setSaving] = useState(false);
 
+  const [relatedContent, setRelatedContent] = useState<ContentListItem[]>([]);
+
   const [publishing, setPublishing] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [askAIOpen, setAskAIOpen] = useState(false);
+
+  const [isBookmarked, setIsBookmarked] = useState(false);
+  const [isTogglingBookmark, setIsTogglingBookmark] = useState(false);
 
   useEffect(() => {
     if (backendToken) {
@@ -148,6 +172,7 @@ export default function ArticleDetailPage() {
       .getContentById(contentId)
       .then((data) => {
         setContent(data);
+        setIsBookmarked(data.is_bookmarked);
         setLoading(false);
       })
       .catch(() => {
@@ -156,12 +181,17 @@ export default function ArticleDetailPage() {
       });
   }, [contentId, backendToken, authLoading]);
 
+  useEffect(() => {
+    if (!content) return;
+    apiClient.getRelatedContent(content.id).then(setRelatedContent).catch(() => {});
+  }, [content?.id]);
+
   const enterEditMode = () => {
     if (!content) return;
     setEditTitle(content.title);
     setEditDescription(content.description);
     setEditSummary(content.ai_summary ?? "");
-    setEditBody(content.body_text);
+    if (!isPdf) setEditBody(content.body_text);
     setEditTags(content.tags.map((t) => ({ id: t.id, name: t.name, type: t.type })));
     setEditMode(true);
   };
@@ -173,7 +203,7 @@ export default function ArticleDetailPage() {
       const updated = await apiClient.updateContent(content.id, {
         title: editTitle,
         description: editDescription,
-        body_text: editBody,
+        ...(!isPdf && { body_text: editBody }),
         ai_summary: editSummary,
         tags: editTags,
       });
@@ -199,6 +229,23 @@ export default function ArticleDetailPage() {
       setError(err instanceof Error ? err.message : "Action failed.");
     } finally {
       setPublishing(false);
+    }
+  };
+
+  const handleBookmarkToggle = async () => {
+    if (!backendToken || isTogglingBookmark || !content) return;
+    const prev = isBookmarked;
+    setIsBookmarked(!prev);
+    setIsTogglingBookmark(true);
+    try {
+      const result = await apiClient.toggleBookmark(content.id);
+      setIsBookmarked(result.bookmarked);
+      toast(result.bookmarked ? "Article bookmarked" : "Bookmark removed");
+    } catch {
+      setIsBookmarked(prev);
+      toast.error("Failed to update bookmark");
+    } finally {
+      setIsTogglingBookmark(false);
     }
   };
 
@@ -235,10 +282,18 @@ export default function ArticleDetailPage() {
     );
   }
 
+  /* OLD status chip colors
   const statusChipClass =
     content.status === "published"
       ? "bg-[#D1FAE5] text-[#065F46] border-[#A7F3D0]"
       : "bg-[#FEF3C7] text-[#92400E] border-[#FDE68A]";
+  */
+  const statusChipClass =
+    content.status === "published"
+      ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+      : "bg-amber-50 text-amber-700 border-amber-200";
+
+  const isPdf = content.body_text.trimStart().startsWith("<!DOCTYPE") || content.body_text.trimStart().startsWith("<html");
 
   const contentTypeTag = content.tags.find((t) => t.type === "content_type");
   const specialtyTags = content.tags.filter((t) => t.type === "specialty");
@@ -270,9 +325,10 @@ export default function ArticleDetailPage() {
           </DialogContent>
         </Dialog>
 
-        <div className="max-w-3xl mx-auto flex flex-col gap-6">
+        <div className={cn("mx-auto flex gap-6 items-start", askAIOpen ? "max-w-6xl" : "max-w-3xl")}>
+          <div className="flex-1 min-w-0 flex flex-col gap-6">
           {isAdmin && (
-            <div className="flex items-center justify-between bg-amber-50 border border-amber-200 rounded-lg px-4 py-3">
+            <div className="flex items-center justify-between bg-zinc-50 border border-zinc-200 rounded-xl px-4 py-3">
               <div className="flex items-center gap-2">
                 <span
                   className={cn(
@@ -315,7 +371,44 @@ export default function ArticleDetailPage() {
             </div>
           ) : (
             <div className="flex flex-col gap-2">
-              <h1 className="text-3xl font-bold text-foreground leading-tight">{content.title}</h1>
+              <div className="flex items-start justify-between gap-4">
+                <h1 className="text-3xl font-bold text-foreground leading-tight">{content.title}</h1>
+                {content.status === "published" && (
+                  <div className="flex items-center gap-2 shrink-0 mt-1">
+                    <button
+                      onClick={handleBookmarkToggle}
+                      disabled={isTogglingBookmark}
+                      className="text-muted-foreground hover:text-primary transition-colors disabled:opacity-50"
+                      aria-label={isBookmarked ? "Remove bookmark" : "Bookmark"}
+                    >
+                      <Bookmark
+                        className={cn(
+                          "h-5 w-5",
+                          isBookmarked ? "fill-primary text-primary" : ""
+                        )}
+                      />
+                    </button>
+                    <Button
+                      variant={askAIOpen ? "outline" : "default"}
+                      size="sm"
+                      onClick={() => setAskAIOpen((v) => !v)}
+                      className={cn(!askAIOpen && "gap-1.5")}
+                    >
+                      {askAIOpen ? (
+                        <>
+                          <X className="h-3.5 w-3.5 mr-1" />
+                          Close AI
+                        </>
+                      ) : (
+                        <>
+                          <Sparkles className="h-3.5 w-3.5" />
+                          Ask AI
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                )}
+              </div>
               <p className="text-sm text-[#64748B]">{metaParts.join(" · ")}</p>
               {(specialtyTags.length > 0 || difficultyTag) && (
                 <div className="flex flex-wrap gap-1.5 mt-1">
@@ -356,8 +449,8 @@ export default function ArticleDetailPage() {
             </div>
           ) : content.ai_summary ? (
             <Collapsible open={summaryOpen} onOpenChange={setSummaryOpen}>
-              <CollapsibleTrigger className="flex items-center justify-between w-full px-4 py-2.5 border border-[#E2E8F0] rounded-lg bg-[#F8FAFC] hover:bg-[#F1F5F9] transition-colors text-left">
-                <span className="text-xs font-semibold uppercase tracking-wide text-[#64748B]">
+              <CollapsibleTrigger className="flex items-center justify-between w-full px-4 py-2.5 border border-zinc-200 rounded-xl bg-zinc-50 hover:bg-zinc-100 transition-colors text-left">
+                <span className="text-xs font-bold uppercase tracking-widest text-zinc-400">
                   AI Summary
                 </span>
                 <ChevronDown
@@ -368,16 +461,26 @@ export default function ArticleDetailPage() {
                 />
               </CollapsibleTrigger>
               <CollapsibleContent>
-                <div className="mt-0.5 border-l-4 border-l-primary border border-[#E2E8F0] rounded-lg px-5 py-4 bg-[#F0F7FF]">
+                <div className="mt-0.5 border-l-4 border-l-violet-500 border border-violet-100 rounded-xl px-5 py-4 bg-violet-50/50">
                   <p className="text-foreground leading-relaxed">{content.ai_summary}</p>
                 </div>
               </CollapsibleContent>
             </Collapsible>
           ) : null}
 
-          {editMode ? (
+          {editMode && isPdf ? (
+            <div className="flex flex-col gap-2">
+              <p className="text-sm font-medium text-foreground">Body</p>
+              <p className="text-xs text-muted-foreground">
+                PDF content cannot be edited directly. Re-upload a corrected file to replace it.
+              </p>
+              <div className="py-2 opacity-60 pointer-events-none">
+                <ContentRenderer html={content.body_text} />
+              </div>
+            </div>
+          ) : editMode ? (
             <div className="flex flex-col gap-1.5">
-              <p className="text-sm font-medium text-foreground">Body Text</p>
+              <p className="text-sm font-medium text-foreground">Body</p>
               <Textarea
                 value={editBody}
                 onChange={(e) => setEditBody(e.target.value)}
@@ -412,17 +515,21 @@ export default function ArticleDetailPage() {
             </>
           )}
 
-          {!editMode && (
-            <div className="border border-[#E2E8F0] rounded-lg px-5 py-5">
-              <p className="text-sm font-semibold text-foreground mb-2">Related Content</p>
-              <p className="text-sm text-muted-foreground">Coming soon</p>
+          {!editMode && relatedContent.length > 0 && (
+            <div className="flex flex-col gap-4 pt-2">
+              <p className="text-sm font-semibold text-foreground">You might also like</p>
+              <div className="grid grid-cols-2 gap-4">
+                {relatedContent.map((item) => (
+                  <ArticleCard key={item.id} content={item} showBookmark={false} />
+                ))}
+              </div>
             </div>
           )}
+          </div>
 
-          {!editMode && (
-            <div className="border border-[#E2E8F0] rounded-lg px-5 py-5">
-              <p className="text-sm font-semibold text-foreground mb-2">Ask AI</p>
-              <p className="text-sm text-muted-foreground">Coming soon</p>
+          {askAIOpen && content.status === "published" && !editMode && (
+            <div className="w-96 shrink-0 sticky top-4" style={{ height: "calc(100vh - 6rem)" }}>
+              <AskAIPanel contentId={content.id} onClose={() => setAskAIOpen(false)} />
             </div>
           )}
         </div>
