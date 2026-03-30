@@ -326,7 +326,7 @@ function LibraryContent() {
           )}
         </div>
 
-        <div className="hidden lg:block">
+        <div className="hidden lg:block sticky top-6" style={{ maxHeight: "calc(100vh - 5rem)" }}>
           <TrendingSidebar token={token} />
         </div>
       </div>
