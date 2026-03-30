@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import RoleGuard from "@/components/auth/RoleGuard";
 import DashboardLayout from "@/components/layout/DashboardLayout";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import ViewsChart from "@/components/admin/ViewsChart";
 import TagsChart from "@/components/admin/TagsChart";
 import SearchTermsTable from "@/components/admin/SearchTermsTable";
@@ -74,115 +74,145 @@ function SkeletonCard() {
   );
 }
 
-function FallbackEventList({ events }: { events: AIProviderStats["recent_fallbacks"] }) {
+function FallbackEventRow({ event }: { event: AIProviderStats["recent_fallbacks"][number] }) {
   return (
-    <div className="flex flex-col gap-1">
-      {events.map((event) => (
-        <div
-          key={`${event.content_id}-${event.created_at}`}
-          className="flex items-center justify-between rounded bg-red-50 px-3 py-2 text-sm"
-        >
-          <span className="text-gray-700">
-            Article #{event.content_id}
-            {event.error_message && (
-              <span className="ml-2 text-red-600 truncate max-w-xs inline-block align-bottom">
-                {event.error_message}
-              </span>
-            )}
-          </span>
-          <span className="ml-4 shrink-0 text-gray-400">{event.duration_ms}ms</span>
-        </div>
-      ))}
+    <div className="flex items-center gap-3 rounded-md bg-red-50/60 px-3 py-2 text-sm">
+      <span className="shrink-0 font-mono text-xs text-gray-400">#{event.content_id}</span>
+      {event.error_message && (
+        <span className="flex-1 truncate text-xs text-red-500">{event.error_message}</span>
+      )}
+      <span className="ml-auto shrink-0 tabular-nums text-xs text-gray-400">{event.duration_ms}ms</span>
     </div>
   );
 }
 
 function AIProviderStatsPanel({ stats }: { stats: AIProviderStats }) {
+  const claudePct = stats.total_calls > 0 ? (stats.claude_calls / stats.total_calls) * 100 : 0;
+  const fallbackPct = stats.total_calls > 0 ? (stats.fallback_calls / stats.total_calls) * 100 : 0;
+
   return (
-    <div className="flex flex-col gap-4">
-      <Card className="shadow-sm">
-        <CardHeader className="pb-2">
-          <CardTitle className="text-base font-semibold text-gray-900">Tagging — AI Provider Stats</CardTitle>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-4">
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      {/* Tagging card */}
+      <Card className="shadow-sm overflow-hidden">
+        <CardContent className="p-0">
+          <div className="flex items-start justify-between px-5 py-4 border-b border-gray-100">
             <div>
-              <p className="text-sm text-gray-500">Total Uploads Processed</p>
-              <p className="mt-1 text-2xl font-semibold text-gray-900">
-                {stats.total_calls.toLocaleString()}
-              </p>
+              <p className="text-[11px] font-semibold uppercase tracking-widest text-gray-400">Tagging</p>
+              <p className="mt-1 text-2xl font-semibold text-gray-900">{stats.total_calls.toLocaleString()}</p>
+              <p className="text-xs text-gray-400">uploads processed</p>
             </div>
-            <div>
-              <p className="text-sm text-gray-500">Claude Successes</p>
-              <p className="mt-1 text-2xl font-semibold text-gray-900">
-                {stats.claude_calls.toLocaleString()}
-              </p>
+            <div className="flex items-center gap-1.5 mt-1">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+              <span className="text-xs text-gray-500">{(stats.claude_success_rate * 100).toFixed(0)}% success</span>
             </div>
-            <div>
-              <p className="text-sm text-gray-500">GPT Fallbacks Used</p>
-              <p className="mt-1 text-2xl font-semibold text-gray-900">
+          </div>
+
+          {/* Provider split bar */}
+          <div className="px-5 py-3 border-b border-gray-100 bg-gray-50/50">
+            <div className="h-1.5 overflow-hidden rounded-full bg-gray-200 flex">
+              <div className="bg-indigo-500 transition-all" style={{ width: `${claudePct}%` }} />
+              {fallbackPct > 0 && (
+                <div className="bg-amber-400 transition-all" style={{ width: `${fallbackPct}%` }} />
+              )}
+            </div>
+            <div className="mt-2 flex gap-4">
+              <span className="flex items-center gap-1.5 text-[11px] text-gray-400">
+                <span className="h-1.5 w-1.5 rounded-full bg-indigo-500" />
+                Claude {claudePct.toFixed(0)}%
+              </span>
+              <span className="flex items-center gap-1.5 text-[11px] text-gray-400">
+                <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />
+                GPT fallback {fallbackPct.toFixed(0)}%
+              </span>
+            </div>
+          </div>
+
+          {/* Stats row */}
+          <div className="grid grid-cols-3 divide-x divide-gray-100">
+            <div className="px-5 py-4">
+              <p className="text-[11px] text-gray-400">Claude</p>
+              <p className="mt-1 text-lg font-semibold text-gray-900">{stats.claude_calls.toLocaleString()}</p>
+            </div>
+            <div className="px-5 py-4">
+              <p className="text-[11px] text-gray-400">GPT fallbacks</p>
+              <p className={cn("mt-1 text-lg font-semibold", stats.fallback_calls > 0 ? "text-amber-600" : "text-gray-900")}>
                 {stats.fallback_calls.toLocaleString()}
               </p>
             </div>
-            <div>
-              <p className="text-sm text-gray-500">Fallback Rate</p>
-              <p className="mt-1 text-2xl font-semibold text-gray-900">
+            <div className="px-5 py-4">
+              <p className="text-[11px] text-gray-400">Fallback rate</p>
+              <p className={cn("mt-1 text-lg font-semibold", stats.fallback_rate > 0.1 ? "text-amber-600" : "text-gray-900")}>
                 {(stats.fallback_rate * 100).toFixed(1)}%
               </p>
             </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 border-t border-gray-100 pt-3">
-            <div>
-              <p className="text-sm text-gray-500">Claude Success Rate</p>
-              <p className="mt-1 text-lg font-semibold text-gray-900">
-                {(stats.claude_success_rate * 100).toFixed(1)}%
-              </p>
-            </div>
-            <div>
-              <p className="text-sm text-gray-500">GPT Fallback Success Rate</p>
-              <p className="mt-1 text-lg font-semibold text-gray-900">
-                {(stats.gpt_success_rate * 100).toFixed(1)}%
-              </p>
-            </div>
-          </div>
-
           {stats.recent_fallbacks.length > 0 && (
-            <div className="border-t border-gray-100 pt-3">
-              <p className="mb-2 text-sm font-medium text-gray-700">Recent Tagging Failures</p>
-              <FallbackEventList events={stats.recent_fallbacks} />
+            <div className="border-t border-gray-100 px-5 py-4">
+              <p className="mb-2 text-[11px] font-semibold uppercase tracking-widest text-gray-400">Recent failures</p>
+              <div className="flex flex-col gap-1">
+                {stats.recent_fallbacks.map((e) => (
+                  <FallbackEventRow key={`${e.content_id}-${e.created_at}`} event={e} />
+                ))}
+              </div>
             </div>
           )}
         </CardContent>
       </Card>
 
-      <Card className="shadow-sm">
-        <CardHeader className="pb-2">
-          <CardTitle className="text-base font-semibold text-gray-900">Ask AI — Claude Failures</CardTitle>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-4">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      {/* Ask AI card */}
+      <Card className="shadow-sm overflow-hidden">
+        <CardContent className="p-0">
+          <div className="flex items-start justify-between px-5 py-4 border-b border-gray-100">
             <div>
-              <p className="text-sm text-gray-500">Claude Failures</p>
-              <p className="mt-1 text-2xl font-semibold text-gray-900">
+              <p className="text-[11px] font-semibold uppercase tracking-widest text-gray-400">Ask AI</p>
+              <p className="mt-1 text-2xl font-semibold text-gray-900">{stats.ask_ai_claude_failures.toLocaleString()}</p>
+              <p className="text-xs text-gray-400">Claude failures</p>
+            </div>
+            <div className="flex items-center gap-1.5 mt-1">
+              {stats.ask_ai_claude_failures === 0 ? (
+                <>
+                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+                  <span className="text-xs text-gray-500">All clear</span>
+                </>
+              ) : (
+                <>
+                  <span className="h-1.5 w-1.5 rounded-full bg-red-400" />
+                  <span className="text-xs text-red-500">Failures detected</span>
+                </>
+              )}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 divide-x divide-gray-100">
+            <div className="px-5 py-4">
+              <p className="text-[11px] text-gray-400">Claude failures</p>
+              <p className={cn("mt-1 text-lg font-semibold", stats.ask_ai_claude_failures > 0 ? "text-red-600" : "text-gray-900")}>
                 {stats.ask_ai_claude_failures.toLocaleString()}
               </p>
             </div>
-            <div>
-              <p className="text-sm text-gray-500">GPT-4o Fallbacks Served</p>
-              <p className="mt-1 text-2xl font-semibold text-gray-900">
+            <div className="px-5 py-4">
+              <p className="text-[11px] text-gray-400">GPT-4o fallbacks</p>
+              <p className={cn("mt-1 text-lg font-semibold", stats.ask_ai_gpt_fallbacks > 0 ? "text-amber-600" : "text-gray-900")}>
                 {stats.ask_ai_gpt_fallbacks.toLocaleString()}
               </p>
             </div>
           </div>
 
           {stats.recent_ask_ai_fallbacks.length > 0 ? (
-            <div className="border-t border-gray-100 pt-3">
-              <p className="mb-2 text-sm font-medium text-gray-700">Recent Ask AI Failures</p>
-              <FallbackEventList events={stats.recent_ask_ai_fallbacks} />
+            <div className="border-t border-gray-100 px-5 py-4">
+              <p className="mb-2 text-[11px] font-semibold uppercase tracking-widest text-gray-400">Recent failures</p>
+              <div className="flex flex-col gap-1">
+                {stats.recent_ask_ai_fallbacks.map((e) => (
+                  <FallbackEventRow key={`${e.content_id}-${e.created_at}`} event={e} />
+                ))}
+              </div>
             </div>
           ) : (
-            <p className="text-sm text-gray-400">No Ask AI failures in this period.</p>
+            <div className="border-t border-gray-100 px-5 py-5 flex items-center gap-2">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+              <span className="text-xs text-gray-400">No failures in this period</span>
+            </div>
           )}
         </CardContent>
       </Card>
