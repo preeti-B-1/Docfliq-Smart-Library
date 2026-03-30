@@ -122,9 +122,7 @@ function LibraryContent() {
   const [filtersOpen, setFiltersOpen] = useState(false);
 
   const debouncedSearch = useDebounce(searchInput, 300);
-  const logDebounced = useDebounce(searchInput, 1000);
   const lastLogged = useRef("");
-  const pendingResultCount = useRef<number | null>(null);
 
   const mainFilters: ContentFilters = {
     search: debouncedSearch || undefined,
@@ -137,17 +135,12 @@ function LibraryContent() {
   const { data: mainData, isLoading: mainLoading, error: mainError } = useContent(mainFilters, token);
 
   useEffect(() => {
-    if (!mainLoading) {
-      pendingResultCount.current = mainData?.total ?? null;
-    }
-  }, [mainLoading, mainData]);
-
-  useEffect(() => {
-    if (logDebounced.length < 2 || logDebounced === lastLogged.current || !token) return;
-    lastLogged.current = logDebounced;
+    if (mainLoading) return;
+    if (debouncedSearch.length < 2 || debouncedSearch === lastLogged.current || !token) return;
+    lastLogged.current = debouncedSearch;
     apiClient.setToken(token);
-    apiClient.logSearch(logDebounced, pendingResultCount.current).catch(() => {});
-  }, [logDebounced, token]);
+    apiClient.logSearch(debouncedSearch, mainData?.total ?? null).catch(() => {});
+  }, [mainLoading, mainData, debouncedSearch, token]);
 
   const toggleSpecialty = useCallback((specialty: string) => {
     setPage(1);

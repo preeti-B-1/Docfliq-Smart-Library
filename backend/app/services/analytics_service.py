@@ -166,7 +166,7 @@ async def get_searches_analytics(date_range: str, db: AsyncSession) -> SearchesA
         select(SearchLog.query, func.count(SearchLog.id).label("count"))
         .group_by(SearchLog.query)
         .order_by(func.count(SearchLog.id).desc())
-        .limit(20)
+        .limit(5)
     )
     if cutoff:
         top_stmt = top_stmt.where(SearchLog.searched_at >= cutoff)
@@ -179,7 +179,7 @@ async def get_searches_analytics(date_range: str, db: AsyncSession) -> SearchesA
         .where(SearchLog.result_count == 0)
         .group_by(SearchLog.query)
         .order_by(func.count(SearchLog.id).desc())
-        .limit(20)
+        .limit(5)
     )
     if cutoff:
         zero_stmt = zero_stmt.where(SearchLog.searched_at >= cutoff)
