@@ -23,6 +23,7 @@ interface SidebarFiltersProps {
   selectedDifficulties: string[];
   onSpecialtyChange: (specialty: string) => void;
   onDifficultyChange: (difficulty: string) => void;
+  className?: string;
 }
 
 function FilterSection({
@@ -69,12 +70,13 @@ export default function SidebarFilters({
   selectedDifficulties,
   onSpecialtyChange,
   onDifficultyChange,
+  className,
 }: SidebarFiltersProps) {
   const [specialtyOpen, setSpecialtyOpen] = useState(true);
   const [difficultyOpen, setDifficultyOpen] = useState(true);
 
   return (
-    <aside className="bg-white border border-zinc-200 rounded-xl p-4 w-56 flex-shrink-0 shadow-card">
+    <aside className={cn("bg-white border border-zinc-200 rounded-xl p-4 w-56 flex-shrink-0 shadow-card", className)}>
       <p className="text-xs font-bold text-zinc-400 uppercase tracking-widest mb-3">Filters</p>
 
       <FilterSection

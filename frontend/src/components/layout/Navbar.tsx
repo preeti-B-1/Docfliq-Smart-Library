@@ -5,7 +5,14 @@ import { usePathname } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { LogOut } from "lucide-react";
+import { LogOut, Menu } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 /* OLD — navy dark navbar
 interface NavItem { label: string; href: string; }
@@ -81,8 +88,8 @@ export default function Navbar() {
             </span>
           </Link>
 
-          {/* Nav links */}
-          <nav className="flex items-center gap-0.5">
+          {/* Nav links — desktop */}
+          <nav className="hidden md:flex items-center gap-0.5">
             {navItems.map(({ label, href }) => {
               const isActive = pathname.startsWith(href);
               return (
@@ -102,8 +109,8 @@ export default function Navbar() {
             })}
           </nav>
 
-          {/* User area */}
-          <div className="flex items-center gap-3 flex-shrink-0">
+          {/* User area — desktop */}
+          <div className="hidden md:flex items-center gap-3 flex-shrink-0">
             {user && <UserAvatar name={user.name ?? user.email} />}
             <span className="text-sm text-zinc-600 font-medium hidden xl:block">
               {user?.name}
@@ -117,6 +124,41 @@ export default function Navbar() {
               <LogOut className="h-4 w-4" />
               <span className="hidden xl:inline">Sign out</span>
             </Button>
+          </div>
+
+          {/* Hamburger — mobile */}
+          <div className="md:hidden flex items-center gap-2 ml-auto">
+            {user && <UserAvatar name={user.name ?? user.email} />}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="sm" className="px-2">
+                  <Menu className="h-5 w-5" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-48">
+                {navItems.map(({ label, href }) => {
+                  const isActive = pathname.startsWith(href);
+                  return (
+                    <DropdownMenuItem key={href} asChild>
+                      <Link
+                        href={href}
+                        className={cn(isActive && "text-violet-700 font-medium")}
+                      >
+                        {label}
+                      </Link>
+                    </DropdownMenuItem>
+                  );
+                })}
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  onClick={() => signOut({ callbackUrl: "/login" })}
+                  className="gap-2"
+                >
+                  <LogOut className="h-4 w-4" />
+                  Sign out
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
 
         </div>

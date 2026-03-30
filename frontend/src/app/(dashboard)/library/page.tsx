@@ -4,7 +4,7 @@ import { useState, useCallback, useEffect, useRef } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useSession } from "next-auth/react";
-import { Eye } from "lucide-react";
+import { Eye, SlidersHorizontal } from "lucide-react";
 
 import AuthGuard from "@/components/auth/AuthGuard";
 import DashboardLayout from "@/components/layout/DashboardLayout";
@@ -14,6 +14,12 @@ import ActiveFilters from "@/components/content/ActiveFilters";
 import ArticleCard from "@/components/content/ArticleCard";
 import { Spinner } from "@/components/ui";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { useContent } from "@/hooks/useContent";
 import { useDebounce } from "@/hooks/useDebounce";
 import { PAGINATION_CONFIG } from "@/config/constants";
@@ -113,6 +119,7 @@ function LibraryContent() {
   const [selectedSpecialties, setSelectedSpecialties] = useState<string[]>([]);
   const [selectedDifficulties, setSelectedDifficulties] = useState<string[]>([]);
   const [page, setPage] = useState(1);
+  const [filtersOpen, setFiltersOpen] = useState(false);
 
   const debouncedSearch = useDebounce(searchInput, 300);
   const logDebounced = useDebounce(searchInput, 1000);
@@ -172,10 +179,29 @@ function LibraryContent() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   }, []);
 
+  const totalActiveFilters = selectedSpecialties.length + selectedDifficulties.length;
+
   return (
     <div className="flex flex-col gap-5">
+      {/* Mobile filter dialog */}
+      <Dialog open={filtersOpen} onOpenChange={setFiltersOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Filters</DialogTitle>
+          </DialogHeader>
+          <SidebarFilters
+            selectedSpecialties={selectedSpecialties}
+            selectedDifficulties={selectedDifficulties}
+            onSpecialtyChange={toggleSpecialty}
+            onDifficultyChange={toggleDifficulty}
+            className="w-full border-0 shadow-none p-0 rounded-none"
+          />
+        </DialogContent>
+      </Dialog>
+
       <div className="flex gap-6 items-start">
-        <div className="sticky top-6 shrink-0" style={{ maxHeight: "calc(100vh - 5rem)" }}>
+        {/* Desktop sidebar */}
+        <div className="hidden lg:block sticky top-6 shrink-0" style={{ maxHeight: "calc(100vh - 5rem)" }}>
           <SidebarFilters
             selectedSpecialties={selectedSpecialties}
             selectedDifficulties={selectedDifficulties}
@@ -185,7 +211,26 @@ function LibraryContent() {
         </div>
 
         <div className="flex-1 min-w-0 flex flex-col gap-4">
-          <SearchBar value={searchInput} onChange={handleSearchChange} />
+          <div className="flex items-center gap-2">
+            <div className="flex-1">
+              <SearchBar value={searchInput} onChange={handleSearchChange} />
+            </div>
+            {/* Mobile filter button */}
+            <Button
+              variant="outline"
+              size="sm"
+              className="lg:hidden shrink-0 gap-1.5"
+              onClick={() => setFiltersOpen(true)}
+            >
+              <SlidersHorizontal className="h-4 w-4" />
+              Filters
+              {totalActiveFilters > 0 && (
+                <span className="ml-0.5 text-xs font-semibold text-white bg-violet-600 rounded-full px-1.5 py-0.5 leading-none">
+                  {totalActiveFilters}
+                </span>
+              )}
+            </Button>
+          </div>
 
           <ActiveFilters
             specialties={selectedSpecialties}
@@ -281,7 +326,9 @@ function LibraryContent() {
           )}
         </div>
 
-        <TrendingSidebar token={token} />
+        <div className="hidden xl:block">
+          <TrendingSidebar token={token} />
+        </div>
       </div>
     </div>
   );

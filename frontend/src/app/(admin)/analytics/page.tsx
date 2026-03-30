@@ -105,7 +105,7 @@ function AIProviderStatsPanel({ stats }: { stats: AIProviderStats }) {
           <CardTitle className="text-base font-semibold text-gray-900">Tagging — AI Provider Stats</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
-          <div className="grid grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             <div>
               <p className="text-sm text-gray-500">Total Uploads Processed</p>
               <p className="mt-1 text-2xl font-semibold text-gray-900">
@@ -132,7 +132,7 @@ function AIProviderStatsPanel({ stats }: { stats: AIProviderStats }) {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-4 border-t border-gray-100 pt-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 border-t border-gray-100 pt-3">
             <div>
               <p className="text-sm text-gray-500">Claude Success Rate</p>
               <p className="mt-1 text-lg font-semibold text-gray-900">
@@ -161,7 +161,7 @@ function AIProviderStatsPanel({ stats }: { stats: AIProviderStats }) {
           <CardTitle className="text-base font-semibold text-gray-900">Ask AI — Claude Failures</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <p className="text-sm text-gray-500">Claude Failures</p>
               <p className="mt-1 text-2xl font-semibold text-gray-900">
@@ -226,9 +226,9 @@ export default function AnalyticsPage() {
     <RoleGuard requiredRole="admin">
       <DashboardLayout>
         <div className="flex flex-col gap-6">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <h1 className="text-2xl font-bold text-zinc-900 font-display">Analytics</h1>
-            <div className="flex gap-1 rounded-lg border border-zinc-200 bg-white p-1">
+            <div className="flex gap-1 rounded-lg border border-zinc-200 bg-white p-1 self-start sm:self-auto">
               {DATE_RANGES.map(({ label, value }) => (
                 <button
                   key={value}
@@ -249,39 +249,39 @@ export default function AnalyticsPage() {
           {error && <p className="text-sm text-red-600">{error}</p>}
 
           {loading ? (
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               {Array.from({ length: 3 }).map((_, i) => (
                 <SkeletonCard key={i} />
               ))}
             </div>
           ) : data ? (
             <>
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <StatCard label="Total Users" value={data.users.total_users} />
                 <StatCard label="Published Articles" value={data.users.total_articles} />
                 <StatCard label="Total Views" value={data.users.total_views} />
               </div>
 
               <Section title="Content Performance">
-                <div className="grid grid-cols-5 gap-6">
-                  <div className="col-span-3">
+                <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+                  <div className="lg:col-span-3">
                     <ViewsChart articles={data.views.top_articles} />
                   </div>
-                  <div className="col-span-2">
+                  <div className="lg:col-span-2">
                     <TagsChart specialties={data.tags.specialties} />
                   </div>
                 </div>
               </Section>
 
               <Section title="Growth">
-                <div className="grid grid-cols-2 gap-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <SignupsChart signups={data.users.daily_signups} />
                   <PublishingChart publishes={data.publishing.weekly_publishes} />
                 </div>
               </Section>
 
               <Section title="Search">
-                <div className="grid grid-cols-2 gap-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <SearchTermsTable searches={data.searches.top_searches} />
                   <ZeroResultsTable searches={data.searches.zero_result_searches} />
                 </div>

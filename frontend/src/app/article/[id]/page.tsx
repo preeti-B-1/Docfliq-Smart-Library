@@ -325,7 +325,7 @@ export default function ArticleDetailPage() {
           </DialogContent>
         </Dialog>
 
-        <div className={cn("mx-auto flex gap-6 items-start", askAIOpen ? "max-w-6xl" : "max-w-3xl")}>
+        <div className={cn("mx-auto flex gap-6 items-start max-w-3xl", askAIOpen && "lg:max-w-6xl")}>
           <div className="flex-1 min-w-0 flex flex-col gap-6">
           {isAdmin && (
             <div className="flex items-center justify-between bg-zinc-50 border border-zinc-200 rounded-xl px-4 py-3">
@@ -372,7 +372,7 @@ export default function ArticleDetailPage() {
           ) : (
             <div className="flex flex-col gap-2">
               <div className="flex items-start justify-between gap-4">
-                <h1 className="text-3xl font-bold text-foreground leading-tight">{content.title}</h1>
+                <h1 className="text-2xl md:text-3xl font-bold text-foreground leading-tight">{content.title}</h1>
                 {content.status === "published" && (
                   <div className="flex items-center gap-2 shrink-0 mt-1">
                     <button
@@ -518,7 +518,7 @@ export default function ArticleDetailPage() {
           {!editMode && relatedContent.length > 0 && (
             <div className="flex flex-col gap-4 pt-2">
               <p className="text-sm font-semibold text-foreground">You might also like</p>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {relatedContent.map((item) => (
                   <ArticleCard key={item.id} content={item} showBookmark={false} />
                 ))}
@@ -528,9 +528,17 @@ export default function ArticleDetailPage() {
           </div>
 
           {askAIOpen && content.status === "published" && !editMode && (
-            <div className="w-96 shrink-0 sticky top-4" style={{ height: "calc(100vh - 6rem)" }}>
-              <AskAIPanel contentId={content.id} onClose={() => setAskAIOpen(false)} />
-            </div>
+            <>
+              {/* Mobile backdrop */}
+              <div
+                className="fixed inset-0 z-40 bg-black/40 lg:hidden"
+                onClick={() => setAskAIOpen(false)}
+              />
+              {/* Panel — fixed bottom sheet on mobile, sticky sidebar on desktop */}
+              <div className="fixed bottom-0 inset-x-0 z-50 h-[85vh] rounded-t-2xl overflow-hidden lg:sticky lg:top-4 lg:w-96 lg:h-[calc(100vh-6rem)] lg:shrink-0 lg:z-auto lg:rounded-none lg:overflow-visible lg:bottom-auto lg:inset-x-auto">
+                <AskAIPanel contentId={content.id} onClose={() => setAskAIOpen(false)} />
+              </div>
+            </>
           )}
         </div>
       </DashboardLayout>

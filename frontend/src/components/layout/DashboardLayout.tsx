@@ -8,7 +8,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
   return (
     <div className="min-h-screen bg-background">
       <Navbar />
-      <main className="mx-auto max-w-screen-xl px-6 py-8">{children}</main>
+      <main className="mx-auto max-w-screen-xl px-4 py-4 md:px-6 md:py-8">{children}</main>
     </div>
   );
 }
