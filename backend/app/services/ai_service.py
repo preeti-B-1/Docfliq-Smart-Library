@@ -69,9 +69,10 @@ async def process_file_content(content_id: int, filename: str, data: bytes) -> N
 
             embedding = await generate_embedding(content.title + " " + plain_text)
             content.embedding = embedding
+            key_terms_str = " ".join(ai_result.get("key_terms", []))
             content.search_vector = func.to_tsvector(
                 "english",
-                content.title + " " + (content.ai_summary or ""),
+                content.title + " " + (content.ai_summary or "") + (" " + key_terms_str if key_terms_str else ""),
             )
             content.processing_status = "completed"
         except Exception:
@@ -97,9 +98,10 @@ async def _process_tagging(content_id: int, plain_text: str, db: AsyncSession) -
 
         embedding = await generate_embedding(content.title + " " + plain_text)
         content.embedding = embedding
+        key_terms_str = " ".join(ai_result.get("key_terms", []))
         content.search_vector = func.to_tsvector(
             "english",
-            content.title + " " + (content.ai_summary or ""),
+            content.title + " " + (content.ai_summary or "") + (" " + key_terms_str if key_terms_str else ""),
         )
         content.processing_status = "completed"
     except Exception:

@@ -245,6 +245,7 @@ async def update_content(
         content.ai_summary = update_data.ai_summary
 
     if update_data.tags is not None:
+        search_index_dirty = True
         await db.execute(sa_delete(ContentTag).where(ContentTag.content_id == content_id))
 
         for tag_input in update_data.tags:
@@ -271,9 +272,18 @@ async def update_content(
                 db.add(ContentTag(content_id=content_id, tag_id=tag.id))
 
     if search_index_dirty:
+        if update_data.tags is not None:
+            key_terms_str = " ".join(t.name for t in update_data.tags if t.type == "key_term")
+        else:
+            kt_result = await db.execute(
+                select(Tag.name)
+                .join(ContentTag, ContentTag.tag_id == Tag.id)
+                .where(ContentTag.content_id == content_id, Tag.type == "key_term")
+            )
+            key_terms_str = " ".join(kt_result.scalars().all())
         content.search_vector = func.to_tsvector(
             "english",
-            content.title + " " + (content.ai_summary or ""),
+            content.title + " " + (content.ai_summary or "") + (" " + key_terms_str if key_terms_str else ""),
         )
 
     await db.commit()

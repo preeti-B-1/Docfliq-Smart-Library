@@ -90,7 +90,7 @@ export default function RegisterPage() {
         </div>
 
         <p className="relative text-violet-300 text-sm">
-          © 2025 DocFliq
+          © 2026 DocFliq
         </p>
       </div>
 
@@ -113,8 +113,7 @@ export default function RegisterPage() {
 
           <div className="mb-8">
             <h1 className="text-2xl font-bold text-zinc-900 font-display">Create your account</h1>
-            <p className="text-zinc-500 mt-1.5">Free access for verified clinicians</p>
-          </div>
+            </div>
 
           <div className="flex flex-col gap-5">
             <RegisterForm />
