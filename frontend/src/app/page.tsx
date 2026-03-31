@@ -93,7 +93,7 @@ export default function HomePage() {
               href="/register"
               className="inline-flex items-center gap-2 bg-violet-600 hover:bg-violet-700 text-white font-semibold px-8 py-3.5 rounded-xl text-base transition-all duration-150 shadow-lg shadow-violet-200 hover:shadow-violet-300 hover:-translate-y-0.5"
             >
-              Get started free
+              Get started
             </Link>
             <Link
               href="/login"
