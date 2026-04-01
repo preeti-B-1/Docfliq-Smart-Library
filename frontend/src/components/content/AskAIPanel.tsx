@@ -48,7 +48,7 @@ export default function AskAIPanel({ contentId, onClose }: AskAIPanelProps) {
   const [messages, setMessages] = useState<AskAIMessage[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const userMessageCount = messages.filter((m) => m.role === "user").length;
@@ -56,7 +56,8 @@ export default function AskAIPanel({ contentId, onClose }: AskAIPanelProps) {
   const canSend = !!input.trim() && !loading && !limitReached;
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    const el = messagesContainerRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
   }, [messages]);
 
   const sendMessage = async (question?: string) => {
@@ -143,7 +144,7 @@ export default function AskAIPanel({ contentId, onClose }: AskAIPanelProps) {
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto px-4 py-4 flex flex-col gap-4 min-h-0">
+      <div ref={messagesContainerRef} className="flex-1 overflow-y-auto px-4 py-4 flex flex-col gap-4 min-h-0">
         {messages.length === 0 ? (
           <div className="flex flex-col gap-4 mt-2">
             <p className="text-xs text-zinc-400 text-center leading-relaxed">
@@ -199,7 +200,6 @@ export default function AskAIPanel({ contentId, onClose }: AskAIPanelProps) {
             );
           })
         )}
-        <div ref={messagesEndRef} />
       </div>
 
       {/* Input */}
