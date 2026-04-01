@@ -11,6 +11,7 @@ import { formatDate, formatViewCount, cn } from "@/lib/utils";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import AuthGuard from "@/components/auth/AuthGuard";
 import TagEditor from "@/components/admin/TagEditor";
+import RichTextEditor from "@/components/admin/RichTextEditor";
 import ContentRenderer from "@/components/content/ContentRenderer";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -481,11 +482,10 @@ export default function ArticleDetailPage() {
           ) : editMode ? (
             <div className="flex flex-col gap-1.5">
               <p className="text-sm font-medium text-foreground">Body</p>
-              <Textarea
-                value={editBody}
-                onChange={(e) => setEditBody(e.target.value)}
-                rows={24}
-                className="font-mono text-sm"
+              <RichTextEditor
+                initialContent={editBody}
+                onChange={setEditBody}
+                token={backendToken}
               />
             </div>
           ) : (

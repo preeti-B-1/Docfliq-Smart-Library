@@ -10,11 +10,12 @@ import { API_CONFIG } from "@/config/constants";
 
 interface RichTextEditorProps {
   onChange: (html: string) => void;
+  initialContent?: string;
   disabled?: boolean;
   token?: string | null;
 }
 
-export default function RichTextEditor({ onChange, disabled, token }: RichTextEditorProps) {
+export default function RichTextEditor({ onChange, initialContent, disabled, token }: RichTextEditorProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const editor = useEditor({
@@ -24,6 +25,7 @@ export default function RichTextEditor({ onChange, disabled, token }: RichTextEd
       }),
       Image.configure({ inline: false }),
     ],
+    content: initialContent ?? "",
     editable: !disabled,
     onUpdate: ({ editor }) => {
       onChange(editor.getHTML());
