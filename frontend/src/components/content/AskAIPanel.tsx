@@ -71,18 +71,36 @@ export default function AskAIPanel({ contentId, onClose }: AskAIPanelProps) {
     setInput("");
     setLoading(true);
 
-    try {
-      await apiClient.streamAskAI(contentId, text, messages, (chunk) => {
+    const pendingText = { current: "" };
+    let rafId: number | null = null;
+
+    const flush = () => {
+      if (pendingText.current) {
+        const toFlush = pendingText.current;
+        pendingText.current = "";
         setMessages((prev) => {
           const updated = [...prev];
           updated[placeholderIndex] = {
             role: "assistant",
-            content: (updated[placeholderIndex]?.content ?? "") + chunk,
+            content: (updated[placeholderIndex]?.content ?? "") + toFlush,
           };
           return updated;
         });
+      }
+      rafId = null;
+    };
+
+    try {
+      await apiClient.streamAskAI(contentId, text, messages, (chunk) => {
+        pendingText.current += chunk;
+        if (rafId === null) {
+          rafId = requestAnimationFrame(flush);
+        }
       });
+      if (rafId !== null) cancelAnimationFrame(rafId);
+      flush();
     } catch (err) {
+      if (rafId !== null) cancelAnimationFrame(rafId);
       setMessages((prev) => {
         const updated = [...prev];
         updated[placeholderIndex] = {

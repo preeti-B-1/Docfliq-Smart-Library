@@ -535,7 +535,7 @@ export default function ArticleDetailPage() {
                 onClick={() => setAskAIOpen(false)}
               />
               {/* Panel — fixed bottom sheet on mobile, sticky sidebar on desktop */}
-              <div className="fixed bottom-0 inset-x-0 z-50 h-[85vh] rounded-t-2xl overflow-hidden lg:sticky lg:top-4 lg:w-96 lg:h-[calc(100vh-6rem)] lg:shrink-0 lg:z-auto lg:rounded-none lg:overflow-visible lg:bottom-auto lg:inset-x-auto">
+              <div className="fixed bottom-0 inset-x-0 z-50 h-[85vh] rounded-t-2xl overflow-hidden lg:sticky lg:top-4 lg:w-96 lg:h-[calc(100vh-6rem)] lg:shrink-0 lg:z-auto lg:rounded-xl lg:overflow-hidden lg:bottom-auto lg:inset-x-auto">
                 <AskAIPanel contentId={content.id} onClose={() => setAskAIOpen(false)} />
               </div>
             </>
