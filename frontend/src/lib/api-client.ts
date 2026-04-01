@@ -32,7 +32,7 @@ class ApiClient {
   setToken(token: string | null): void {
     this.token = token;
   }
-
+// generic JSON request method; throws a descriptive error on non-2xx responses
   private async request<T>(path: string, options: RequestInit = {}): Promise<T> {
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
@@ -56,7 +56,7 @@ class ApiClient {
 
     return res.json() as Promise<T>;
   }
-
+//for file uploads; does NOT set Content-Type: application/json (lets browser set the multipart boundary)
   private async requestMultipart<T>(path: string, body: FormData): Promise<T> {
     const headers: Record<string, string> = {};
     if (this.token) {
@@ -207,7 +207,7 @@ class ApiClient {
   }
 
   // ─── Ask AI ────────────────────────────────────────────────────────────────
-
+//reads a Server-Sent Events (SSE) stream manually using ReadableStream, parsing data: {...} lines and calling onChunk() for each text piece
   async streamAskAI(
     contentId: number,
     question: string,
